@@ -1,0 +1,24 @@
+#define MainLED 12
+#define StirMotor 2
+#define CycleMotor 10
+#define CMotorIn1 24
+#define CMotorIn2 25
+#define LangerIN 8
+#define LangerOUT 9
+#define LED 32
+
+#define TCAADDR 0x70
+#define diode1_addr 0x44
+#define diode1_wire 0
+#define diode2_addr 0x45
+#define diode2_wire 0
+#define diode3_addr 0x47
+#define diode3_wire 0
+#define diode4_addr 0x44
+#define diode4_wire 1
+#define diode5_addr 0x45
+#define diode5_wire 1
+#define diode6_addr 0x47
+#define diode6_wire 1
+#define result_reg 0x00
+#define config_reg 0x01
