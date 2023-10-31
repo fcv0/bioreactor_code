@@ -10,10 +10,6 @@ class _Main:
     ## Private class
     CmotorSpeed, FmotorSpeed, WmotorSpeed = 230, 0, 0
     CmotorDir, FmotorDir, WmotorDir = 0, 0, 0
-    data = [1,2,3,4,5]
-    data2 = [1,2,3,4,5]
-    data3 = [1,2,3,4,5]
-    data4 = [1,2,3,4,5]
     OD1, OD2, OD3 = [], [], [] # probs will be a multi dimensional array housing both the raw values and calculated OD values.
     Raw1, Raw2, Raw3 = [], [], []
     initRaw1, initRaw2, initRaw3 = 0, 0, 0
@@ -24,8 +20,9 @@ class _Main:
     message = numpy.zeros((20, 1), dtype=numpy.uint8) # This change is dynamical from config file 'Number of variables'
     Device, START, DeviceStatus = None, False, 1
     MMMotor, MMMotorDelay = 0, 0
-    DeviceType = None
+    DeviceType, START = None, False
     Comm_freq, Capture_freq, Save_freq = 10, 4, 100 # In Hz, in seconds and in seconds.
+    RunTime = None
     graph_vals = -80
     CommsTurn = True
     HardwareTime = []
@@ -40,7 +37,8 @@ class Tools:
         self.select_cwd(), self.read_cfg(), self.create_logs
         while self.not_FOUND:
             os.system('cls')
-            try: _Main.Device = self.find_port()
+            try: 
+                _Main.Device = self.find_port()
             except: print('Could not find micro-controller. ')
             if _Main.Device != None:
                 self.not_FOUND = False
@@ -66,27 +64,38 @@ class Tools:
         return PORT
     
     @staticmethod
+    def reset_data() -> None:
+        _Main.OD1, _Main.OD2, _Main.OD3 = [], [], []
+        _Main.Raw1, _Main.Raw2, _Main.Raw3 = [], [], []
+        _Main.initRaw1, _Main.initRaw2, _Main.initRaw3 = 0, 0, 0
+        _Main.HardwareTime = []
+    
+    @staticmethod
     def select_cwd() -> None:
         os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
     @staticmethod
     def CALC_OD() -> None:
+        '''Reduction in computation can be done via doing this in bulk at the end of a run quickly, raw transmission should be just as readable, if not more accurate.'''
         ## Need a fully working diode, if diode is somewhat broken just use the main diode.
-        od1 = -9.2*math.log10(_Main.Raw1[0]/_Main.Raw1[-1])
-        od2 = -9.2*math.log10(_Main.Raw2[0]/_Main.Raw2[-1])
-        #od3 = -9.2*math.log10(_Main.Raw3[0]/_Main.Raw3[-1])
-        _Main.OD1.append(od1), _Main.OD2.append(od2)#, _Main.OD3.append(od3)
+        od1 = round(-9.2*math.log10(_Main.Raw1[0]/_Main.Raw1[-1]), 4)
+        od2 = round(-9.2*math.log10(_Main.Raw2[0]/_Main.Raw2[-1]), 4)
+        od3 = round(-9.2*math.log10(_Main.Raw3[0]/_Main.Raw3[-1]), 4)
+        _Main.OD1.append(od1), _Main.OD2.append(od2), _Main.OD3.append(od3)
     
     @staticmethod
     def point_logs() -> None:
         if os.path.isdir('logs/') == False:
             os.mkdir('logs/')
         os.chdir(f'{os.getcwd()}/logs/')
-        Total_runs = glob.glob('Run_*')
+        Total_runs = glob.glob('Run_*') # Sometimes works, sometimes doesnt :) 
+        print(Total_runs)
         if len(Total_runs) <= 0:
             os.mkdir('Run_1/')
         else:
-            next_run = int(Total_runs[-1][4:]) + 1
+            #next_run = int(Total_runs[-1][4:]) + 1
+            next_run = len(Total_runs) + 1
+            print(next_run)
             os.mkdir(f'Run_{next_run}')
         
     @property
@@ -130,8 +139,15 @@ class Tools:
     
     @staticmethod
     def PointCurrRun() -> None:
+        ### broken
+        ### need to fix
         RUN = glob.glob('*')
-        os.chdir(f'{os.getcwd()}/{RUN[-1]}/')
+        cp = os.getcwd()
+        cp = cp.split('pyqt.py')
+        try:
+            os.chdir(f'{cp[-1]}\\{RUN[-1]}')
+        except:
+            os.chdir(f'{cp[-1]}\\logs\\{RUN[-1]}')
     
     @staticmethod
     def read_cfg() -> None:
@@ -150,6 +166,7 @@ class Tools:
                     _Main.Comm_freq = float(line[-1])
                 if 'Run Time' in line:
                     line = line.split('=')
+                    _Main.RunTime = int(line[-1])
                 if 'Data frequency' in line:
                     line = line.split('=')
                     _Main.Capture_freq = int(line[-1])
@@ -177,9 +194,7 @@ class Tools:
             # this isn't really needed to be honest.
             return int.from_bytes(data, 'little')
         StartTime = time.time()
-        c = 1
-        cL = 1
-        sF = 1
+        c, cL, sF = 1, 1, 1
         try:
             while _Main.START:
                 currentTime = time.time() - StartTime
@@ -187,10 +202,10 @@ class Tools:
                     if _Main.Device.in_waiting >= 24:
                         os.system('cls')
                         read = _Main.Device.read(24)
-                        #print(f'Ambient temperature: {bytes2float(read[12:16])} | Object temperature: {bytes2float(read[16:20])} | System time: {(bytes2float(read[20:24])/1000)}')
+                        print(f'Ambient temperature: {bytes2float(read[12:16])} | Object temperature: {bytes2float(read[16:20])} | System time: {(bytes2float(read[20:24])/1000)}')
                         print('Time | ', currentTime)
                         # Turn the LED on before the measurement, standard is (_Main.Capture_freq//2) -> rounded to int() 
-                        if (currentTime // 1) == cL:
+                        if (currentTime // 1) == cL: # probs wont work in the future I imagine...
                             _Main.message[18] = 1
                             cL+=1
                         # Captures a reading of the relevant measurements every _Main.Capture_freq seconds -> in cfg known as Data frequency.
@@ -199,28 +214,34 @@ class Tools:
                             c+=1
                             Tools.CALC_OD()
                             _Main.message[18] = 0
-                        ### Save every _Main.Save_freq time point, standard is 100 seconds.
+                        # Save every _Main.Save_freq time point, standard is 100 seconds.
                         if (currentTime // _Main.Save_freq) == sF:
-                            Tools.select_cwd(), Tools.point_logs(), Tools.PointCurrRun()
+                            Tools.select_cwd(), Tools.PointCurrRun()
                             Tools.save_data(_Main.HardwareTime, _Main.Raw1, _Main.Raw2, _Main.Raw3)
                             print(f'Data last saved at {sF*_Main.Save_freq} in seconds. ')
                             sF+=1
+                        # Final save and kills all electronics when run time is complete.
+                        if (currentTime // _Main.RunTime) == 1:
+                            Tools.save_data(_Main.HardwareTime, _Main.Raw1, _Main.Raw2, _Main.Raw3)
+                            _Main.Device.write(bytes(numpy.zeros((20, 1), dtype=numpy.uint8)))
+                            exit()
                         _Main.CommsTurn = True
                 # Send data at a frequenct of 1/_Main.Comm_freq, e.g standard is 0.1 seconds.
                 if _Main.CommsTurn:
                     time.sleep((1/_Main.Comm_freq))
                     _Main.Device.write(bytes(_Main.message))
                     _Main.CommsTurn = False
+            _Main.Device.write(bytes(numpy.zeros((20, 1), dtype=numpy.uint8)))
         except KeyboardInterrupt:
             msgba = ctypes.windll.user32.MessageBoxA
             msgba(0, ctypes.c_char_p(b"Software crashed"), ctypes.c_char_p(b"Crash"), 0x0 | 0x30)
-            _Main.message = numpy.zeros((20, 1), dtype=numpy.uint8)
-            _Main.Device.write(bytes(_Main.message))
+            Tools.save_data(_Main.HardwareTime, _Main.Raw1, _Main.Raw2, _Main.Raw3)
 
 class UpdateVariableApp(QWidget, Tools):
     def __init__(self, ) -> None:
         super().__init__()
         self.initUI()
+        # Stop fucking working on start up :(
 
     def initUI(self):
         # Simple system for adding tabs and placing tabs where-ever you like, 
@@ -385,7 +406,7 @@ class UpdateVariableApp(QWidget, Tools):
         # Add temperature and run time until completion, similar save points.
                 self.OD1.setText(f'OD1: {_Main.OD1[-1]}')
                 self.OD2.setText(f'OD2: {_Main.OD2[-1]}')
-                self.OD3.setText(f'OD3: {_Main.OD3}')
+                self.OD3.setText(f'OD3: {_Main.OD3[-1]}')
                 self.initRaw1.setText(f'Photodiode 1: {_Main.Raw1[0]}')
                 self.initRaw2.setText(f'Photodiode 2: {_Main.Raw2[0]}')
                 self.initRaw3.setText(f'Photodiode 3: {_Main.Raw3[0]}')
@@ -399,10 +420,18 @@ class UpdateVariableApp(QWidget, Tools):
                 pass
     
     def start_run(self, ) -> None:
-        _Main.START = True
-        s1 = threading.Thread(target=Tools.data_handler)
-        s1.start()
-        self.START.setStyleSheet('background-color: red')
+        if _Main.START == False:
+            _Main.START = True
+            s1 = threading.Thread(target=Tools.data_handler)
+            s1.start()
+            self.START.setStyleSheet('background-color: red')
+            self.START.setText('Stop')
+        else:
+            Tools.reset_data()
+            _Main.START = False
+            self.START.setText('Start')
+            self.START.setStyleSheet('')
+            #self.stop_run()
     
     def check_values(self, Updated_Variable):
         '''This should be stable for all motors. '''
@@ -556,27 +585,23 @@ class GraphWindow(QDialog):
         layout = QVBoxLayout()
         layout.addWidget(self.canvas)
         self.setLayout(layout)
-        # Create the axis in the figure
         self.ax = self.figure.add_subplot()
-        # Set updating parameters
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.updateGraph)
-        self.timer.start(_Main.Capture_freq*1000)  # Update every 4 second
+        self.timer.start((_Main.Capture_freq*1000))  # Update every 4 second
     
     def updateGraph(self):
-        Raw1, Raw2, Raw3, TIME = numpy.array(_Main.Raw1[_Main.graph_vals:]), numpy.array(_Main.Raw2[_Main.graph_vals:]), numpy.array(_Main.Raw3[_Main.graph_vals:]), numpy.array(_Main.HardwareTime[_Main.graph_vals:])
-        if self.graphType == 'OD Graphs':
-            ## First need to calculate OD then plot OD...
-            self.ax.clear(), self.ax.plot(TIME, _Main.data, 'r', alpha=0.5), self.ax.plot(TIME, _Main.data2, 'b', alpha=0.5), self.ax.plot(TIME, _Main.data3, 'g', alpha=0.5), self.ax.legend(['Red = data1', 'Blue = data2', 'Green = data3'])
-            self.ax.set_title(f"Live plotting"), self.ax.set_xlabel('Time (s)'), self.ax.set_ylabel('Optical Density')
-            # Draw this graph to new widget
-            self.canvas.draw()
-        elif self.graphType == 'Raw Transmittance':
-            # Perhaps putting RAW 1, 2, 3 in a singular RAW_TRANS array is probs better than calling, RAW_TRANS[0], [1], [2]... etc... manageable.
-            self.ax.clear(), self.ax.plot(TIME, Raw1, 'r', alpha=0.5), self.ax.plot(TIME, Raw2, 'b', alpha=0.5), self.ax.plot(TIME, Raw3, 'g', alpha=0.5), self.ax.legend(['Red = photodiode 1', 'Blue = photodiode 2', 'Green = photodiode 3']), self.ax.set_title('Live plotting - Raw Transmission w.r.t time (s)'), self.ax.set_xlabel('Time (s)'), self.ax.set_ylabel('Raw power values (nW). ')
-            self.canvas.draw()
-        # if len(Raw1) == 30:
-        #     numpy.delete(Raw1, 0), numpy.delete(Raw2, 0), numpy.delete(Raw3, 0), numpy.delete(TIME, 0)
+        try:
+            if self.graphType == 'Raw Transmittance':
+                self.ax.clear()
+                self.ax.plot(_Main.HardwareTime, _Main.Raw1, 'r', alpha=0.5), self.ax.plot(_Main.HardwareTime, _Main.Raw2, 'b', alpha=0.5), self.ax.plot(_Main.HardwareTime, _Main.Raw3, 'g', alpha=0.5), self.ax.legend(['Red = diode 1', 'Blue = diode 2', 'Green = diode 3']), self.ax.set_xlabel('Time (s)'), self.ax.set_ylabel('Raw Transmission (nW)'), self.ax.set_title('Live updating raw transmission graph')
+                self.canvas.draw()
+            elif self.graphType == 'OD Graphs':
+                self.ax.clear()
+                self.ax.plot(_Main.HardwareTime, _Main.OD1, 'r', alpha=0.5), self.ax.plot(_Main.HardwareTime, _Main.OD2, 'b', alpha=0.5), self.ax.plot(_Main.HardwareTime, _Main.OD3, 'g', alpha=0.5), self.ax.legend(['Red = diode 1', 'Blue = diode 2', 'Green = diode 3']), self.ax.set_xlabel('Time (s)'), self.ax.set_ylabel('Optical density'), self.ax.set_title('Live updating OD graph')
+                self.canvas.draw()
+        except:
+            pass
 
 def main():
     app = QApplication(sys.argv)
